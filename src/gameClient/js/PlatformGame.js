@@ -15,7 +15,7 @@ var stars;
 var score = 0;
 var scoreText;
 
-var remotePlayers = [];
+var aliens;
 var socket;
 
 function create() {
@@ -49,7 +49,9 @@ function create() {
     ledge.body.immovable = true;
 
     // The player and its settings
-    player = Player(Math.random() * 800, game.world.height - 150);
+    aliens = game.add.group();
+    aliens.enableBody = true;
+    player = createPlayer(Math.random() * 800, game.world.height - 150);
 
     //  Finally some stars to collect
     stars = game.add.group();
@@ -75,8 +77,7 @@ function create() {
 
     //  Our controls.
     cursors = game.input.keyboard.createCursorKeys();
-   
-    
+ 
     socket = io();
     setEventHandlers();
 }
@@ -85,27 +86,27 @@ function update() {
     
     //  Collide the player and the stars with the platforms
     game.physics.arcade.collide(player, platforms);
+    game.physics.arcade.collide(player, platforms);
     game.physics.arcade.collide(stars, platforms);
 
     //  Checks to see if the player overlaps with any of the stars, if he does call the collectStar function
     game.physics.arcade.overlap(player, stars, collectStar, null, this);
 
     //  Reset the players velocity (movement)
+    player.hasMoved = false;
     player.body.velocity.x = 0;
-    var hasMoved = false;
+
     if (cursors.left.isDown) {
         //  Move to the left
         player.body.velocity.x = -150;
 
         player.animations.play('left');
-        hasMoved = true;
     }
     else if (cursors.right.isDown) {
         //  Move to the right
         player.body.velocity.x = 150;
 
         player.animations.play('right');
-        hasMoved = true;
     }
     else {
         //  Stand still
@@ -117,10 +118,11 @@ function update() {
     //  Allow the player to jump if they are touching the ground.
     if (cursors.up.isDown && player.body.touching.down) {
         player.body.velocity.y = -350;
-        hasMoved = true;
     }
     
-    socket.emit("move player", { x: player.x, y: player.y, velocityX: player.body.velocity.x, velocityY: player.body.velocity.y });
+    if(player.body.velocity.x != 0 || player.body.velocity.y != 0){
+        socket.emit("movePlayer", { x: player.x, y: player.y, velocity: player.body.velocity });
+    }    
 }
 
 function collectStar(player, star) {    
@@ -137,14 +139,14 @@ function collectStar(player, star) {
 function setEventHandlers() {
 	socket.on("connect", onSocketConnected);
 	socket.on("disconnect", onSocketDisconnect);
-	socket.on("new player", onNewPlayer);
-	socket.on("move player", onMovePlayer);
-	socket.on("remove player", onRemovePlayer);
+	socket.on("newPlayer", onNewPlayer);
+	socket.on("movePlayer", onMovePlayer);
+	socket.on("removePlayer", onRemovePlayer);
 };
 
 function onSocketConnected() {
     console.log("Connected to socket server");
-	socket.emit("new player", {x: player.x, y: player.y});
+	socket.emit("newPlayer", {x: player.x, y: player.y});
 };
 
 function onSocketDisconnect() {
@@ -154,9 +156,8 @@ function onSocketDisconnect() {
 function onNewPlayer(data) {
     console.log("New player connected: "+data.id);
 	
-	var newPlayer = Player(data.x, data.y);
+	var newPlayer = createPlayer(data.x, data.y);
 	newPlayer.id = data.id;
-	remotePlayers.push(newPlayer);
 };
 
 function onMovePlayer(data) {
@@ -166,53 +167,59 @@ function onMovePlayer(data) {
 		console.log("Player not found: "+data.id);
 		return;
 	};
-
+     
 	movePlayer.x = data.x;
-	movePlayer.y = data.y;
+	movePlayer.y = data.y;  
+	movePlayer.body.velocity.x = data.velocity.x;
+	movePlayer.body.velocity.y = data.velocity.y;
+    
+    if (movePlayer.body.velocity.x < 0) {
+        movePlayer.animations.play('left');
+    }
+    else if (movePlayer.body.velocity.x > 0) {
+        movePlayer.animations.play('right');
+    }
+    else {
+        movePlayer.animations.stop();
+        movePlayer.frame = 4;
+    }
 };
 
 function onRemovePlayer(data) {
 	var removePlayer = playerById(data.id);
-    removePlayer.kill();
     
 	if (!removePlayer) {
 		console.log("Player not found: "+data.id);
 		return;
 	};
-
-	remotePlayers.splice(remotePlayers.indexOf(removePlayer), 1);
+    removePlayer.kill();
+	//aliens.splice(aliens.indexOf(removePlayer), 1);
 };
 
 
-
-/**************************************************
-** GAME PLAYER CLASS
-**************************************************/
-function Player(startX, startY) {
-    
-    // The player and its settings
-    player = game.add.sprite(startX, startY, 'dude');
-
+// helper functions
+function createPlayer(startX, startY) {
+    var newPlayer = aliens.create(startX, startY, 'dude');
+    newPlayer.id = -1;
     //  We need to enable physics on the player
-    game.physics.arcade.enable(player);
+    game.physics.arcade.enable(newPlayer);
 
     //  Player physics properties. Give the little guy a slight bounce.
-    player.body.bounce.y = 0.2;
-    player.body.gravity.y = 300;
-    player.body.collideWorldBounds = true;
+    newPlayer.body.bounce.y = 0.2;
+    newPlayer.body.gravity.y = 300;
+    newPlayer.body.collideWorldBounds = true;
 
     //  Our two animations, walking left and right.
-    player.animations.add('left', [0, 1, 2, 3], 10, true);
-    player.animations.add('right', [5, 6, 7, 8], 10, true);
+    newPlayer.animations.add('left', [0, 1, 2, 3], 10, true);
+    newPlayer.animations.add('right', [5, 6, 7, 8], 10, true);
  
-    return player;
+    return newPlayer;
 };
 
 function playerById(id) {
-    var i;
-    for (i = 0; i < remotePlayers.length; i++) {
-        if (remotePlayers[i].id == id)
-            return remotePlayers[i];
+    for (var i = 0; i < aliens.children.length; i++) {
+        if (aliens.children[i].id == id)
+            return aliens.children[i];
     };
 
     return false;

@@ -1,8 +1,10 @@
 var Player = function(startX, startY) {
-    var x = startX,
-        y = startY,
-        id;
-    
+    this.x = startX,
+    this.y = startY,
+    this.id = null;
+    this.velocityX = 0;
+    this.velocityY = 0;
+    /*
     var getX = function() {
         return x;
     };
@@ -25,7 +27,7 @@ var Player = function(startX, startY) {
         setX: setX,
         setY: setY,
         id: id
-    }
+    }*/
 };
 
 exports.Player = Player;
